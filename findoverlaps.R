@@ -7,6 +7,7 @@ printWithTimeStamp <- function(text)
   cat(sprintf("%s %s", format(Sys.time(), "%X"), text))
 }
 
+#Allows the passing of files from the bash script
 optspec <- matrix(c(
 	'grangesFile', 'g', 1, "character", "GRanges.RData file (required)",
 	'gtfAnnotationFile', 'e', 1, "character", "ensembl_gtfannotation.RData file (required)",
@@ -18,6 +19,7 @@ optspec <- matrix(c(
 
 opt = getopt(optspec)
 
+#If there is something in help, or something in $grangesFile or $gtfAnnotationFile or both $geneList and $fileGeneList contain nothing then error and quit
 if(!is.null(opt$help) || is.null(opt$grangesFile) || is.null(opt$gtfAnnotationFile) ||
   (is.null(opt$geneList) && is.null(opt$fileGeneList)))
 {
@@ -25,6 +27,7 @@ if(!is.null(opt$help) || is.null(opt$grangesFile) || is.null(opt$gtfAnnotationFi
 	q()
 }
 
+# If there is something in $geneList then use that, if not use the lines in $fileGeneList
 if(!is.null(opt$geneList))
 {
   targetGenes <- scan(textConnection(gsub("\\s*,\\s*|\\s+", " ", opt$geneList, perl=TRUE)), what="character", sep=" ")
@@ -71,6 +74,8 @@ printWithTimeStamp("  readname\n")
 overs$readname <- values(GRbam)["name"][overs$queryHits,]
 printWithTimeStamp("  sequence\n")
 overs$readSeq <-(values(GRbam)[["sequence"]][overs$queryHits])
+printWithTimeStamp("  positions\n")
+overs$position <-(values(GRbam)[["position"]][overs$queryHits])
 printWithTimeStamp("  geneid\n")
 overs$geneid <-(values(GR)[["geneid"]][overs$subjectHits])
 printWithTimeStamp("  transcriptid\n")
@@ -81,6 +86,7 @@ printWithTimeStamp("  genename\n")
 overs$genename <-(values(GR)[["genename"]][overs$subjectHits])
 printWithTimeStamp("  biotype\n")
 overs$biotype <-(values(GR)[["biotype"]][overs$subjectHits])
+
 
 overs <- overs[,-c(1,2)]
 

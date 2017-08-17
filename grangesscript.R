@@ -5,6 +5,7 @@ library(getopt)
 optspec <- matrix(c(
 	'bamFile', 'b', 1, "character", "input BAM file (required)",
 	'chrLengthFile', 't', 1, "character", "chromosome length table file (required)",
+        'uniquify', 'r', 2, "character", "uniquification (optional)",
 	'outFile', 'o', 1, "character", "output file name (optional)",
 	'help', 'h', 0, "logical", "this help"
 ),ncol=5,byrow=T)
@@ -17,6 +18,7 @@ if(!is.null(opt$help) || is.null(opt$bamFile) || is.null(opt$chrLengthFile))
 	q()
 }
 
+
 if(!is.null(opt$outFile))
 {
 	outFile <- opt$outFile
@@ -25,7 +27,10 @@ if(!is.null(opt$outFile))
 	outFile <- "GRanges.RData"
 }
 
+
+
 chrLenFile <- opt$chrLengthFile
+
 
 if(!file.exists(chrLenFile))
 {
@@ -55,9 +60,21 @@ bamHITS <- scanBam(bamFile,param=param)[[1]]
 
 cat("Collating data...\n")
 sequences <- as.data.frame(bamHITS$seq)	
-input <- data.frame(bamHITS$qname,bamHITS$rname,bamHITS$strand,bamHITS$pos,bamHITS$qwidth,stringsAsFactors=FALSE)
+
+endPos <- (bamHITS$pos + bamHITS$qwidth)
+positions <- paste(bamHITS$pos,endPos, sep="-")
+
+#A conditional statement based on the users selection, if uniquified then can either be extended or short names
+if (opt$uniquify=="yes") {
+nodeName <- paste(bamHITS$rname, positions, bamHITS$qname, sep=":")
+} else {
+nodeName <- bamHITS$qname
+}
+
+
+input <- data.frame(nodeName,bamHITS$rname,bamHITS$strand,bamHITS$pos,bamHITS$qwidth, positions, stringsAsFactors=FALSE)
 input$Sequence <- as.character(sequences[,1]) 
-colnames(input) <- c("Read","Seq","Strand","Start","Width","Sequence")
+colnames(input) <- c("Read","Seq","Strand","Start","Width","Positions","Sequence")
 
 input <- input[input$Seq %in% names(chrLens),]
 
@@ -68,7 +85,8 @@ GRbam  <-   GRanges(
          strand     = Rle(factor(input$Strand)),
          seqlengths = chrLens,
          name       = input$Read,
-	 sequence = input$Sequence
+	 sequence   = input$Sequence,
+         position   = input$Positions
       )
 
 cat(sprintf("Writing output file '%s'.\n", outFile))

@@ -8,7 +8,7 @@ echo_timestamp()
   date +"%R:%S $*"
 }
 
-while getopts b:t:g:o:c:d:n:p:l:uh ARG
+while getopts b:t:g:o:c:d:n:p:l:suh ARG
 do
   case ${ARG} in
     (b) UNSORTED_BAM_FILE=$(readlink -f "$OPTARG");;
@@ -20,6 +20,7 @@ do
     (n) GENE_LIST=$(cat "$OPTARG");;
     (p) PERCENTAGE="$OPTARG";;
     (l) COVERAGE="$OPTARG";;
+    (s) SORTED="-s";;
     (u) UNIQUIFY="-u";;
     (h)
       echo "${SCRIPT_NAME}"
@@ -33,6 +34,8 @@ do
       echo "  -n <file> A file containing a list of genes to examine"
       echo "  -p <value> The percentage similarity value (default 85)"
       echo "  -l <value> The percentage coverage value (default 55)"
+      echo "  -s the bam file is already sorted"
+      echo "  -e the names are to be extended with full information"
       echo "  -u discard redundant reads"
       exit 0;;
 
@@ -85,6 +88,8 @@ then
   COVERAGE="55"
 fi
 
+
+
 mkdir -p ${OUTPUT_DIRECTORY}
 EXITCODE="$?"
 if [ "$EXITCODE" != 0 ];
@@ -93,10 +98,12 @@ then
   exit $EXITCODE
 fi
 
+
 echo_timestamp "Computing valid gene names..."
 VALID_GENES=$(perl -pe 's/.*gene_name "([^"]+)".*/\1/' ${GTF_FILE} | \
   tr '[:lower:]' '[:upper:]' | sort | uniq)
 GENE_LIST=$(echo "$GENE_LIST" | tr '[:lower:]' '[:upper:]' | perl -pe 's/\s*,\s*|\s+/ /g')
+
 
 for GENE in ${GENE_LIST}
 do
@@ -123,7 +130,7 @@ echo_timestamp "Output directory: ${OUTPUT_DIRECTORY}"
 echo_timestamp "Gene list: ${GENE_LIST}"
 echo_timestamp "Input hash: ${INPUT_HASH}"
 
-SAMTOOLS=samtools
+SAMBAMBA=sambamba
 R_SCRIPT=Rscript
 
 COMPUTE_DATA=0
@@ -214,23 +221,46 @@ fi
 
 BASENAME_BAM_FILE=$(basename ${UNSORTED_BAM_FILE})
 NO_EXT_BAM_FILE="${BASENAME_BAM_FILE%.*}"
-SAMTOOLS_SORTED_BAM_FILE="${HASH_DIRECTORY}/${NO_EXT_BAM_FILE}-sorted"
-SORTED_BAM_FILE="${SAMTOOLS_SORTED_BAM_FILE}.bam"
+SORTED_BAM_FILE="${HASH_DIRECTORY}/${NO_EXT_BAM_FILE}-sorted.bam"
+UNIQUE_SORTED_BAM_FILE="${HASH_DIRECTORY}/unique_sorted_${BASENAME_BAM_FILE}"
 GRANGES_FILE="${HASH_DIRECTORY}/${NO_EXT_BAM_FILE}-GRanges.RData"
 GTF_ANNOTATION_FILE="${HASH_DIRECTORY}/${NO_EXT_BAM_FILE}-ensembl_gtfannotation.RData"
 
 if [ "${COMPUTE_DATA}" == "1" ];
 then
-  echo_timestamp "Sorting ${UNSORTED_BAM_FILE}..."
-  ${SAMTOOLS} sort ${UNSORTED_BAM_FILE} ${SAMTOOLS_SORTED_BAM_FILE}
-  EXITCODE="$?"
-  if [ "$EXITCODE" != 0 ];
+
+  if [ ! "${SORTED}" ];
   then
-    echo_timestamp "samtools sort step failed"
-    exit $EXITCODE
+      #Sort the BAM file by coordinate
+      echo_timestamp "Sambamba is sorting ${UNSORTED_BAM_FILE}..."
+      ${SAMBAMBA} sort -o ${SORTED_BAM_FILE} ${UNSORTED_BAM_FILE}
+      EXITCODE="$?"
+      if [ "$EXITCODE" != 0 ];
+      then
+        echo_timestamp "sambamba sort step failed"
+      exit $EXITCODE
+      fi
+      echo_timestamp "File sorted"
+
+  else 
+      echo_timestamp "Assumed file sorted"
+      SORTED_BAM_FILE="${UNSORTED_BAM_FILE}"
+  fi
+  
+
+  if [ "${UNIQUIFY}" == "-u" ];
+  then
+    #Sets a variable to yes which tells grangesscript.R to use the names containing information about the location of the read
+    GRANGES_UNIQUIFICATION="yes"
+
+  #If the user doesn't select uniquification
+  else
+     #Sets the grangesscript.R variable to no so the names will be the original (QNAME from the bam file)
+     GRANGES_UNIQUIFICATION="no"   
   fi
 
-  ${R_SCRIPT} ${DIR_NAME}/grangesscript.R -b "${SORTED_BAM_FILE}" -t "${CHROMOSOME_LENGTH_FILE}" \
+
+  ${R_SCRIPT} ${DIR_NAME}/grangesscript.R -b "${SORTED_BAM_FILE}" -t "${CHROMOSOME_LENGTH_FILE}" -r ${GRANGES_UNIQUIFICATION} \
     -o "${GRANGES_FILE}"
   EXITCODE="$?"
   if [ "$EXITCODE" != 0 ];
@@ -286,6 +316,7 @@ do
   ${DIR_NAME}/tab-to-nodeclass.sh ${UNIQUIFY} -e -t "${HASH_DIRECTORY}/${GENE}.tab" > \
     "${OUTPUT_DIRECTORY}/${GENE}.nodeclass"
 
+
  rm -rf "${R2R_OUTPUT_DIR}"
  ${DIR_NAME}/read2read.py -p ${PERCENTAGE} -l ${COVERAGE} -a ${NUM_CORES} \
    "${OUTPUT_DIRECTORY}/${GENE}.fasta" "${R2R_OUTPUT_DIR}"
@@ -298,11 +329,12 @@ do
  fi
   
   OUTPUT_FILE_NAME="${GENE}-s${PERCENTAGE}-c${COVERAGE}${UNIQUIFY}.layout"
+  
   cat "${R2R_OUTPUT_DIR}/${GENE}_pairwise.txt" \
     "${OUTPUT_DIRECTORY}/${GENE}.nodeclass" > \
     "${OUTPUT_DIRECTORY}/${OUTPUT_FILE_NAME}"
 
-echo "Finished running job!"
+echo_timestamp "Finished running job!"
 
 done
 

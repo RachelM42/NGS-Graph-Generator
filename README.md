@@ -82,18 +82,20 @@ Please note BioLayout Express3D uses high end 3D visualisation technology and th
 Authors
 -------
 
+* Fahmi Nazarie
+
 The scripts provided are based on the work of others. In particular:
 
-* Harpreet Kaur and Fahmi Nazarie
+* Harpreet Kaur
  * findoverlaps.R
  * grangesscript.R
  * grangesscript_gtf.R
 
-* Fioravante de Sapio and Fahmi Nazarie
+* Fioravante de Sapio
  * read2read.py
  * megablast2ncol.py
 
-* Tim Angus and Fahmi Nazarie
+* Tim Angus
  * create-biolayout-file.sh
  * tab-to-fasta.sh
  * tab-to-nodeclass.sh
